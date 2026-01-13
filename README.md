@@ -14,20 +14,20 @@ It is designed to be:
 * **Scalable**
 * **Fault-tolerant**
 * **Auditable**
-* **Kafka-driven**
+* **RabbitMQ-driven** (message broker for reliable task processing)
 * **Multi-tenant (organization-based isolation)**
 
 ---
 
 ## 2. High-Level Goals
 
-* Allow **any organization** to publish notification requests to Kafka
+* Allow **any organization** to publish notification requests via RabbitMQ
 * Process notifications asynchronously
-* Guarantee **at-least-once delivery**
+* Guarantee **at-least-once delivery** with manual acknowledgments
 * Prevent duplicate notifications (idempotency)
 * Store full **audit history**
 * Allow organizations to **query their notification data**
-* Support retries and dead-letter handling
+* Support retries with exponential backoff and dead-letter handling
 
 ---
 
@@ -40,59 +40,112 @@ User / Upstream Service
         |
         | (notification.requested)
         v
-Kafka Topic
+RabbitMQ Exchange (notification.exchange)
         |
         v
-Notification Service
+Queue: notification.requested
+        |
+        v
+Notification Service (Consumer)
   - Persist notification (PENDING)
   - Validate & deduplicate
-  - Publish send task
+  - Publish to send queue
         |
         v
-Kafka (notification.send)
+Queue: notification.send
         |
         v
-Sender Worker
-  - Send via provider
-  - Retry on transient failure
-  - Update status (SENT / FAILED)
+Sender Worker (Consumer)
+  - Send via provider (Email/SMS/Push)
+  - On success: ACK message, update status (SENT)
+  - On transient failure: NACK with requeue or route to retry queue
+  - On permanent failure: Route to DLQ
   - Publish status event
 
 ```
 
 ---
 
-## 4. Kafka Design
+## 4. RabbitMQ Design
 
-### Topics
+### Why RabbitMQ over Kafka?
 
-| Topic Name                | Purpose                         |
-| ------------------------- | ------------------------------- |
-| `notification.requested`  | Incoming notification requests  |
-| `notification.send`       | Tasks for sending notifications |
-| `notification.send.retry` | Retry attempts                  |
-| `notification.send.dlt`   | Permanent failures              |
-| `notification.status`     | Status updates                  |
+| Feature | Benefit for Notifications |
+|---------|---------------------------|
+| **Task Queue Semantics** | Notifications are tasks to process, not events to replay |
+| **Built-in DLX (Dead Letter Exchange)** | Native retry and DLQ without custom code |
+| **Per-message Acknowledgment** | Fine-grained control over message processing |
+| **Message TTL** | Auto-expire stale notifications |
+| **Priority Queues** | Prioritize urgent notifications |
+| **Simpler Operations** | Lower complexity than Kafka clusters |
 
 ---
 
-### Partitioning Strategy
+### Exchanges
 
-* **Kafka key**: `organizationId`
-* Ensures:
+| Exchange Name | Type | Purpose |
+|---------------|------|---------|
+| `notification.exchange` | Topic | Main routing exchange |
+| `notification.dlx` | Direct | Dead letter exchange for failed messages |
+| `notification.retry.exchange` | Direct | Delayed retry exchange |
 
-  * All notifications for an organization go to the same partition
-  * Ordering is preserved per organization
+---
 
-```text
-partition = hash(organizationId) % numPartitions
+### Queues
+
+| Queue Name | Bound To | Routing Key | Purpose |
+|------------|----------|-------------|---------|
+| `notification.requested` | `notification.exchange` | `notification.requested` | Incoming notification requests |
+| `notification.send` | `notification.exchange` | `notification.send` | Tasks for sending notifications |
+| `notification.send.retry` | `notification.retry.exchange` | `notification.send.retry` | Retry queue with TTL |
+| `notification.send.dlq` | `notification.dlx` | `notification.send.dlq` | Permanent failures (Dead Letter Queue) |
+| `notification.status` | `notification.exchange` | `notification.status` | Status update events |
+
+---
+
+### Retry Strategy with Dead Letter Exchange
+
+```
+notification.send (Queue)
+        |
+        | (message fails, NACK without requeue)
+        v
+notification.dlx (Dead Letter Exchange)
+        |
+        v
+notification.send.retry (Queue with x-message-ttl)
+        |
+        | (TTL expires, message re-routed)
+        v
+notification.exchange → notification.send
+        |
+        | (if max retries exceeded)
+        v
+notification.send.dlq (Dead Letter Queue)
 ```
 
-// note: For start, I will just hash orgId and not mod by partition.
+**Queue Configuration for Retry:**
+```java
+// notification.send.retry queue arguments
+x-message-ttl: 30000  // 30 seconds delay before retry
+x-dead-letter-exchange: notification.exchange
+x-dead-letter-routing-key: notification.send
+```
 
 ---
 
-### Kafka Message Contract (Example)
+### Routing Strategy
+
+* **Routing Key Pattern**: `notification.<action>.<channel>` (optional granularity)
+* Examples:
+  * `notification.requested` - New notification request
+  * `notification.send` - Ready to send
+  * `notification.send.email` - Email-specific queue (optional)
+  * `notification.status.sent` - Status update
+
+---
+
+### Message Contract (Example)
 
 ```json
 {
@@ -104,21 +157,34 @@ partition = hash(organizationId) % numPartitions
   "payload": {
     "name": "John",
     "link": "https://example.com"
-    ...
   },
+  "priority": 5,
+  "retryCount": 0,
+  "maxRetries": 5,
   "createdAt": "2025-01-01T10:00:00Z"
 }
 ```
+
+### Message Headers
+
+| Header | Purpose |
+|--------|---------|
+| `x-organization-id` | Multi-tenant isolation |
+| `x-correlation-id` | Tracing (same as notificationId) |
+| `x-retry-count` | Track retry attempts |
+| `x-original-queue` | For DLQ debugging |
 
 ---
 
 ## 5. Idempotency Strategy
 
-Kafka provides **at-least-once delivery**, so deduplication is required.
+RabbitMQ provides **at-least-once delivery** (with manual acknowledgment), so deduplication is required.
 
-* `notificationId` is generated by the producer
+* `notificationId` is generated by the producer (UUID)
 * Stored as **PRIMARY KEY** in DB
-* Duplicate events are safely ignored at DB level
+* Duplicate messages are safely ignored at DB level (INSERT ON CONFLICT DO NOTHING)
+* Consumer uses manual ACK after successful processing
+* If consumer crashes before ACK, message is redelivered → idempotency prevents duplicates
 
 ---
 
@@ -244,12 +310,56 @@ FAILED → RETRYING → SENT
 
 ---
 
-## 9. Retry & Failure Handling
+## 9. Retry & Failure Handling (RabbitMQ Native)
 
-* Retry up to `max_retries`
-* Transient failures → `notification.send.retry`
-* Permanent failures → `notification.send.dlt`
-* All failures recorded in audit table
+### Retry Flow
+
+```
+Message Processing Failed
+        |
+        v
+Check retry_count < max_retries?
+        |
+   YES  |  NO
+        |   \
+        v    v
+   NACK     Route to DLQ
+(requeue=false)  (permanent failure)
+        |
+        v
+Dead Letter Exchange (DLX)
+        |
+        v
+Retry Queue (with TTL)
+        |
+        | (after TTL expires)
+        v
+Re-route to original queue
+```
+
+### Implementation Details
+
+* **Transient failures** (network, rate limit): NACK → retry queue with exponential backoff
+* **Permanent failures** (invalid recipient, auth error): Route directly to DLQ
+* **Retry with backoff**: Use multiple retry queues with increasing TTLs
+  * `notification.retry.30s` (TTL: 30 seconds)
+  * `notification.retry.5m` (TTL: 5 minutes)  
+  * `notification.retry.30m` (TTL: 30 minutes)
+* **Max retries exceeded**: Route to `notification.send.dlq`
+* All failures recorded in `notification_events` audit table
+
+### RabbitMQ Consumer Acknowledgment
+
+```java
+// On success
+channel.basicAck(deliveryTag, false);
+
+// On transient failure (retry)
+channel.basicNack(deliveryTag, false, false); // requeue=false, goes to DLX
+
+// On permanent failure
+// Add header marking as permanent, route to DLQ
+```
 
 ---
 
@@ -308,12 +418,12 @@ This service intentionally applies the following **software design patterns** to
 ---
 
 ### Event-Driven Architecture (EDA)
-Used to decouple notification producers from consumers using Kafka. Enables asynchronous processing, scalability, and fault isolation.
+Used to decouple notification producers from consumers using RabbitMQ. Enables asynchronous processing, scalability, and fault isolation.
 
 ---
 
 ### Producer–Consumer Pattern
-Kafka producers publish notification events, and Kafka consumers process them independently, allowing parallelism and back-pressure handling.
+RabbitMQ producers publish notification messages to exchanges, and consumers process them independently from queues, allowing parallelism and back-pressure handling via prefetch limits.
 
 ---
 
@@ -355,17 +465,25 @@ Abstracts database access logic, keeping domain logic independent of persistence
 ### Single Responsibility Principle (SRP)
 Each component (consumer, sender, retry handler, persistence layer) has a single, well-defined responsibility.
 
+
 ---
 
-## 15. Conclusion
+## 16. Conclusion
 
 This design provides a **scalable, auditable, and production-ready** notification platform suitable for multi-tenant systems.
+
+**Why RabbitMQ?**
+* Native DLX/DLQ for retry handling
+* Per-message acknowledgments for reliability
+* Priority queues for urgent notifications
+* Simpler operational model than Kafka
+* Perfect fit for task queue workloads
 
 This document serves as the **single source of truth** for:
 
 * Architecture decisions
 * Data modeling
-* Kafka strategy
+* RabbitMQ messaging strategy
 * Future evolution
 
 ---
