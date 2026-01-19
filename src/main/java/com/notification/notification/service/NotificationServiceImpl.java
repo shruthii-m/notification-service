@@ -5,8 +5,13 @@ import com.notification.notification.dto.NotificationResponse;
 import com.notification.notification.entity.Notification;
 import com.notification.notification.entity.NotificationStatus;
 import com.notification.notification.entity.NotificationType;
+import com.notification.notification.exception.NotificationSendException;
 import com.notification.notification.exception.ResourceNotFoundException;
 import com.notification.notification.repository.NotificationRepository;
+import com.notification.notification.sender.NotificationSender;
+import com.notification.notification.sender.NotificationSenderFactory;
+import com.notification.notification.sender.SendResult;
+import com.notification.notification.validator.NotificationRequestValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -16,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,11 +31,17 @@ import java.util.stream.Collectors;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationSenderFactory senderFactory;
+    private final NotificationRequestValidator validator;
 
     @Override
     public NotificationResponse createNotification(NotificationRequest request) {
         log.info("Creating notification for recipient: {}", request.getRecipient());
 
+        // Validate the notification request
+        validator.validate(request);
+
+        // Create and save notification with PENDING status
         Notification notification = Notification.builder()
                 .title(request.getTitle())
                 .message(request.getMessage())
@@ -41,6 +53,47 @@ public class NotificationServiceImpl implements NotificationService {
 
         Notification savedNotification = notificationRepository.save(notification);
         log.info("Notification created with ID: {}", savedNotification.getId());
+
+        // Attempt to send the notification
+        Optional<NotificationSender> sender = senderFactory.getSender(request.getType());
+
+        if (sender.isPresent()) {
+            try {
+                log.info("Attempting to send notification {} via {}",
+                        savedNotification.getId(), request.getType());
+
+                SendResult result = sender.get().send(savedNotification);
+
+                if (result.isSuccess()) {
+                    savedNotification.setStatus(NotificationStatus.SENT);
+                    savedNotification.setSentAt(result.getSentAt());
+                    log.info("Notification {} sent successfully. Provider ID: {}",
+                            savedNotification.getId(), result.getProviderId());
+                } else {
+                    savedNotification.setStatus(NotificationStatus.FAILED);
+                    log.error("Failed to send notification {}: {}",
+                            savedNotification.getId(), result.getErrorMessage());
+                }
+
+                savedNotification = notificationRepository.save(savedNotification);
+
+            } catch (NotificationSendException e) {
+                log.error("Failed to send notification {}: {}",
+                        savedNotification.getId(), e.getMessage());
+                savedNotification.setStatus(NotificationStatus.FAILED);
+                savedNotification = notificationRepository.save(savedNotification);
+                throw e;
+            } catch (Exception e) {
+                log.error("Unexpected error sending notification {}: {}",
+                        savedNotification.getId(), e.getMessage(), e);
+                savedNotification.setStatus(NotificationStatus.FAILED);
+                savedNotification = notificationRepository.save(savedNotification);
+                throw e;
+            }
+        } else {
+            log.warn("No sender available for notification type: {}. Notification {} remains PENDING",
+                    request.getType(), savedNotification.getId());
+        }
 
         return mapToResponse(savedNotification);
     }
