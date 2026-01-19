@@ -36,6 +36,9 @@ dependencies {
 	// Email validation
 	implementation 'commons-validator:commons-validator:1.8.0'
 
+	// .env file support
+	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
