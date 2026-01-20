@@ -29,12 +29,21 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-hateoas'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+	// Spring Mail (SMTP Email Provider)
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+	// Email validation
+	implementation 'commons-validator:commons-validator:1.8.0'
+
+	// .env file support
+	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	annotationProcessor 'org.projectlombok:lombok'
-	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-web-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

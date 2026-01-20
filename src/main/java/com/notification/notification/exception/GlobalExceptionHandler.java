@@ -32,6 +32,22 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(TransientSendException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTransientSendException(TransientSendException ex) {
+        log.error("Transient send error (retryable): {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error("Failed to send notification (temporary issue). Please retry later: " + ex.getMessage()));
+    }
+
+    @ExceptionHandler(PermanentSendException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePermanentSendException(PermanentSendException ex) {
+        log.error("Permanent send error (non-retryable): {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Failed to send notification: " + ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationExceptions(
             MethodArgumentNotValidException ex) {
