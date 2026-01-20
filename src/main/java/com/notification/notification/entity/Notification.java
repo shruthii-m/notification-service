@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "notifications")
@@ -19,6 +20,12 @@ public class Notification {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
+
+    @Column(nullable = false, unique = true)
+    private UUID uuid;
+
+    @Column(name = "organization_id")
+    private String organizationId;
 
     @Column(nullable = false)
     private String title;
@@ -40,6 +47,26 @@ public class Notification {
     @Column(nullable = false)
     private NotificationStatus status;
 
+    @Column(name = "retry_count")
+    @Builder.Default
+    private Integer retryCount = 0;
+
+    @Column(name = "max_retries")
+    @Builder.Default
+    private Integer maxRetries = 5;
+
+    @Column(name = "error_code")
+    private String errorCode;
+
+    @Column(name = "error_message", length = 2000)
+    private String errorMessage;
+
+    @Column(name = "provider_id")
+    private String providerId;
+
+    @Column(name = "provider_name")
+    private String providerName;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -54,6 +81,15 @@ public class Notification {
         createdAt = LocalDateTime.now();
         if (status == null) {
             status = NotificationStatus.PENDING;
+        }
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+        if (retryCount == null) {
+            retryCount = 0;
+        }
+        if (maxRetries == null) {
+            maxRetries = 5;
         }
     }
 }

@@ -37,8 +37,8 @@ public class NotificationController {
         NotificationResponse response = notificationService.createNotification(request);
         addSelfLink(response);
         return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponse.success(response, "Notification created successfully"));
+                .status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.success(response, "Notification accepted for processing"));
     }
 
     @GetMapping("/{id}")

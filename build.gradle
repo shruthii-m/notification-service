@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.3.5'
 	id 'io.spring.dependency-management' version '1.1.5'
+	id 'jacoco'
 }
 
 group = 'com.notification'
@@ -39,11 +40,19 @@ dependencies {
 	// .env file support
 	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 
+	// Kafka dependencies
+	implementation 'org.springframework.kafka:spring-kafka'
+
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
+	testImplementation 'org.testcontainers:kafka'
+	testImplementation 'org.testcontainers:postgresql'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.awaitility:awaitility:4.2.0'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -53,4 +62,51 @@ tasks.named('bootBuildImage') {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy jacocoTestReport
+}
+
+jacoco {
+	toolVersion = "0.8.11"
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+		html.required = true
+	}
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+				'**/dto/**',
+				'**/entity/**',
+				'**/exception/**',
+				'**/NotificationApplication.class'
+			])
+		}))
+	}
+}
+
+// Helper task to print test runtime classpath (used by load test script)
+tasks.register('printTestRuntimeClasspath') {
+	doLast {
+		println configurations.testRuntimeClasspath.asPath
+	}
+}
+
+// Task to run the load test
+tasks.register('loadTest', JavaExec) {
+	description = 'Run load test against the notification microservice'
+	group = 'verification'
+
+	dependsOn testClasses
+
+	classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+	mainClass = 'com.notification.notification.load.LoadTestRunner'
+
+	doFirst {
+		println "Starting load test..."
+		println "Make sure the application is running on http://localhost:8081"
+		println ""
+	}
 }
