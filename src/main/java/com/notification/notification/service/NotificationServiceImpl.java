@@ -5,12 +5,11 @@ import com.notification.notification.dto.NotificationResponse;
 import com.notification.notification.entity.Notification;
 import com.notification.notification.entity.NotificationStatus;
 import com.notification.notification.entity.NotificationType;
-import com.notification.notification.exception.NotificationSendException;
 import com.notification.notification.exception.ResourceNotFoundException;
+import com.notification.notification.messaging.dto.NotificationMessage;
+import com.notification.notification.messaging.producer.EventProducer;
+import com.notification.notification.messaging.producer.NotificationProducer;
 import com.notification.notification.repository.NotificationRepository;
-import com.notification.notification.sender.NotificationSender;
-import com.notification.notification.sender.NotificationSenderFactory;
-import com.notification.notification.sender.SendResult;
 import com.notification.notification.validator.NotificationRequestValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +30,8 @@ import java.util.stream.Collectors;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
-    private final NotificationSenderFactory senderFactory;
+    private final NotificationProducer notificationProducer;
+    private final EventProducer eventProducer;
     private final NotificationRequestValidator validator;
 
     @Override
@@ -49,51 +49,35 @@ public class NotificationServiceImpl implements NotificationService {
                 .recipientEmail(request.getRecipientEmail())
                 .type(request.getType())
                 .status(NotificationStatus.PENDING)
+                .organizationId(request.getOrganizationId())
                 .build();
 
         Notification savedNotification = notificationRepository.save(notification);
-        log.info("Notification created with ID: {}", savedNotification.getId());
+        log.info("Notification created with ID: {}, UUID: {}",
+                savedNotification.getId(), savedNotification.getUuid());
 
-        // Attempt to send the notification
-        Optional<NotificationSender> sender = senderFactory.getSender(request.getType());
+        // Create Kafka message
+        NotificationMessage message = NotificationMessage.builder()
+                .notificationUuid(savedNotification.getUuid())
+                .notificationId(savedNotification.getId())
+                .organizationId(savedNotification.getOrganizationId())
+                .title(savedNotification.getTitle())
+                .message(savedNotification.getMessage())
+                .recipient(savedNotification.getRecipient())
+                .recipientEmail(savedNotification.getRecipientEmail())
+                .type(savedNotification.getType())
+                .retryCount(0)
+                .maxRetries(savedNotification.getMaxRetries())
+                .createdAt(savedNotification.getCreatedAt())
+                .correlationId(savedNotification.getUuid().toString())
+                .build();
 
-        if (sender.isPresent()) {
-            try {
-                log.info("Attempting to send notification {} via {}",
-                        savedNotification.getId(), request.getType());
+        // Publish to Kafka for async processing
+        notificationProducer.publishToSend(message);
+        log.info("Notification {} published to Kafka for async processing", savedNotification.getUuid());
 
-                SendResult result = sender.get().send(savedNotification);
-
-                if (result.isSuccess()) {
-                    savedNotification.setStatus(NotificationStatus.SENT);
-                    savedNotification.setSentAt(result.getSentAt());
-                    log.info("Notification {} sent successfully. Provider ID: {}",
-                            savedNotification.getId(), result.getProviderId());
-                } else {
-                    savedNotification.setStatus(NotificationStatus.FAILED);
-                    log.error("Failed to send notification {}: {}",
-                            savedNotification.getId(), result.getErrorMessage());
-                }
-
-                savedNotification = notificationRepository.save(savedNotification);
-
-            } catch (NotificationSendException e) {
-                log.error("Failed to send notification {}: {}",
-                        savedNotification.getId(), e.getMessage());
-                savedNotification.setStatus(NotificationStatus.FAILED);
-                savedNotification = notificationRepository.save(savedNotification);
-                throw e;
-            } catch (Exception e) {
-                log.error("Unexpected error sending notification {}: {}",
-                        savedNotification.getId(), e.getMessage(), e);
-                savedNotification.setStatus(NotificationStatus.FAILED);
-                savedNotification = notificationRepository.save(savedNotification);
-                throw e;
-            }
-        } else {
-            log.warn("No sender available for notification type: {}. Notification {} remains PENDING",
-                    request.getType(), savedNotification.getId());
-        }
+        // Publish created event
+        eventProducer.publishCreated(savedNotification.getUuid(), savedNotification.getOrganizationId());
 
         return mapToResponse(savedNotification);
     }
@@ -227,12 +211,20 @@ public class NotificationServiceImpl implements NotificationService {
     private NotificationResponse mapToResponse(Notification notification) {
         return NotificationResponse.builder()
                 .id(notification.getId())
+                .uuid(notification.getUuid())
+                .organizationId(notification.getOrganizationId())
                 .title(notification.getTitle())
                 .message(notification.getMessage())
                 .recipient(notification.getRecipient())
                 .recipientEmail(notification.getRecipientEmail())
                 .type(notification.getType())
                 .status(notification.getStatus())
+                .retryCount(notification.getRetryCount())
+                .maxRetries(notification.getMaxRetries())
+                .errorCode(notification.getErrorCode())
+                .errorMessage(notification.getErrorMessage())
+                .providerId(notification.getProviderId())
+                .providerName(notification.getProviderName())
                 .createdAt(notification.getCreatedAt())
                 .sentAt(notification.getSentAt())
                 .readAt(notification.getReadAt())

@@ -39,11 +39,17 @@ dependencies {
 	// .env file support
 	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 
+	// Kafka dependencies
+	implementation 'org.springframework.kafka:spring-kafka'
+
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
+	testImplementation 'org.testcontainers:kafka'
+	testImplementation 'org.awaitility:awaitility:4.2.0'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

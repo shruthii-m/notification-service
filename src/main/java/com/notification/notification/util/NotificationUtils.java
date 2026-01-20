@@ -41,7 +41,9 @@ public final class NotificationUtils {
 
     public static boolean canTransitionStatus(NotificationStatus from, NotificationStatus to) {
         return switch (from) {
-            case PENDING -> to == NotificationStatus.SENT || to == NotificationStatus.FAILED;
+            case PENDING -> to == NotificationStatus.PROCESSING || to == NotificationStatus.SENT || to == NotificationStatus.FAILED;
+            case PROCESSING -> to == NotificationStatus.SENT || to == NotificationStatus.RETRYING || to == NotificationStatus.FAILED;
+            case RETRYING -> to == NotificationStatus.PROCESSING || to == NotificationStatus.SENT || to == NotificationStatus.FAILED;
             case SENT -> to == NotificationStatus.DELIVERED || to == NotificationStatus.FAILED;
             case DELIVERED -> to == NotificationStatus.READ;
             case READ, FAILED -> false;
