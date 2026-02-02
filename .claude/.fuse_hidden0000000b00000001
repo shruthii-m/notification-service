@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(./gradlew clean:*)",
-      "Bash(export GMAIL_USERNAME=pk364186@gmail.com)",
-      "Bash(export GMAIL_APP_PASSWORD=\"xjny wkhi iasc awlr\")"
-    ]
-  }
-}
