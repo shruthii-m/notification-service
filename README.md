@@ -868,12 +868,12 @@ SENT
    ↓
 FAILED → RETRYING → SENT
             ↓
-           DLT
+           DLQ (Dead Letter Queue)
 ```
 
 ---
 
-## 9. Retry & Failure Handling (RabbitMQ Native)
+## 9. Retry & Failure Handling (Apache Kafka)
 
 ### Retry Flow
 
@@ -886,42 +886,55 @@ Check retry_count < max_retries?
    YES  |  NO
         |   \
         v    v
-   NACK     Route to DLQ
-(requeue=false)  (permanent failure)
+Publish to      Publish to DLQ
+notification.send.retry   (permanent failure)
+(with backoff headers)    (notification.send.dlq)
         |
         v
-Dead Letter Exchange (DLX)
+RetryConsumer
+polls retry topic
         |
         v
-Retry Queue (with TTL)
+Check X-Next-Retry-Timestamp
         |
-        | (after TTL expires)
         v
-Re-route to original queue
+Delay elapsed?
+   YES  |  NO
+        |   \
+        v    v
+Republish   Pause &
+to send    poll again
+topic      later
 ```
 
 ### Implementation Details
 
-* **Transient failures** (network, rate limit): NACK → retry queue with exponential backoff
-* **Permanent failures** (invalid recipient, auth error): Route directly to DLQ
-* **Retry with backoff**: Use multiple retry queues with increasing TTLs
-  * `notification.retry.30s` (TTL: 30 seconds)
-  * `notification.retry.5m` (TTL: 5 minutes)  
-  * `notification.retry.30m` (TTL: 30 minutes)
-* **Max retries exceeded**: Route to `notification.send.dlq`
-* All failures recorded in `notification_events` audit table
+* **Transient failures** (network, rate limit): Publish to `notification.send.retry` with exponential backoff timestamp
+* **Permanent failures** (invalid recipient, auth error): Publish directly to `notification.send.dlq`
+* **Retry with backoff**: Single retry topic with timestamp-based delays
+  * Retry 1: 5 seconds
+  * Retry 2: 30 seconds
+  * Retry 3: 2 minutes
+  * Retry 4: 10 minutes
+  * Retry 5: 30 minutes
+* **Max retries exceeded**: Publish to `notification.send.dlq`
+* All failures recorded in `notification.events` topic (event sourcing)
 
-### RabbitMQ Consumer Acknowledgment
+### Kafka Consumer Acknowledgment
 
 ```java
 // On success
-channel.basicAck(deliveryTag, false);
+acknowledgment.acknowledge(); // Manual commit
 
 // On transient failure (retry)
-channel.basicNack(deliveryTag, false, false); // requeue=false, goes to DLX
+// Publish to retry topic with nextRetryTimestamp header
+notificationProducer.publishToRetry(message, calculateBackoff(retryCount));
+acknowledgment.acknowledge(); // Commit after publishing to retry
 
 // On permanent failure
-// Add header marking as permanent, route to DLQ
+// Publish to DLQ topic
+notificationProducer.publishToDlq(message, errorDetails);
+acknowledgment.acknowledge(); // Commit after publishing to DLQ
 ```
 
 ---
@@ -981,12 +994,12 @@ This service intentionally applies the following **software design patterns** to
 ---
 
 ### Event-Driven Architecture (EDA)
-Used to decouple notification producers from consumers using RabbitMQ. Enables asynchronous processing, scalability, and fault isolation.
+Used to decouple notification producers from consumers using Apache Kafka. Enables asynchronous processing, scalability, and fault isolation.
 
 ---
 
 ### Producer–Consumer Pattern
-RabbitMQ producers publish notification messages to exchanges, and consumers process them independently from queues, allowing parallelism and back-pressure handling via prefetch limits.
+Kafka producers publish notification messages to topics, and consumer groups process them independently with partitioning, allowing horizontal scalability and parallel processing with at-least-once delivery guarantees.
 
 ---
 
@@ -1006,7 +1019,7 @@ Models the notification lifecycle (PENDING, PROCESSING, SENT, FAILED, RETRYING) 
 ---
 
 ### Idempotent Consumer Pattern
-Ensures duplicate Kafka messages do not result in duplicate notifications by using `notificationId` as a unique key.
+Ensures duplicate Kafka messages do not result in duplicate notifications by using `notificationUuid` (UUID field) as a unique key with status checking before processing.
 
 ---
 
@@ -1035,18 +1048,22 @@ Each component (consumer, sender, retry handler, persistence layer) has a single
 
 This design provides a **scalable, auditable, and production-ready** notification platform suitable for multi-tenant systems.
 
-**Why RabbitMQ?**
-* Native DLX/DLQ for retry handling
-* Per-message acknowledgments for reliability
-* Priority queues for urgent notifications
-* Simpler operational model than Kafka
-* Perfect fit for task queue workloads
+**Why Apache Kafka?**
+* **Event Sourcing**: Full audit trail via immutable event log (`notification.events` topic)
+* **Event Replay**: Reprocess notifications from any point in time (up to 30-day retention)
+* **Horizontal Scalability**: Partition-based parallelism enables 10K-100K msgs/sec throughput
+* **Multi-Tenancy**: Partition by `organizationId` for ordering and isolation
+* **Real-time Analytics**: Kafka Streams for delivery metrics and monitoring
+* **Long-term Retention**: 30-day retention for audit and compliance
+* **At-Least-Once Delivery**: Manual acknowledgment with idempotency guarantees
+* **Production-Ready**: Mature ecosystem (Kafka UI, monitoring, observability)
 
 This document serves as the **single source of truth** for:
 
 * Architecture decisions
 * Data modeling
-* RabbitMQ messaging strategy
+* Apache Kafka messaging strategy
+* Multi-tenancy design
 * Future evolution
 
 ---
