@@ -1,0 +1,174 @@
+Probing consumer-group lag:
+  topic=notification.send
+  group=notification-sender-group
+  timeout=300s
+
+16:11:34.654 [main] INFO org.apache.kafka.clients.admin.AdminClientConfig -- AdminClientConfig values: 
+	auto.include.jmx.reporter = true
+	bootstrap.controllers = []
+	bootstrap.servers = [localhost:9092]
+	client.dns.lookup = use_all_dns_ips
+	client.id = 
+	connections.max.idle.ms = 300000
+	default.api.timeout.ms = 60000
+	enable.metrics.push = true
+	metadata.max.age.ms = 300000
+	metric.reporters = []
+	metrics.num.samples = 2
+	metrics.recording.level = INFO
+	metrics.sample.window.ms = 30000
+	receive.buffer.bytes = 65536
+	reconnect.backoff.max.ms = 1000
+	reconnect.backoff.ms = 50
+	request.timeout.ms = 30000
+	retries = 2147483647
+	retry.backoff.max.ms = 1000
+	retry.backoff.ms = 100
+	sasl.client.callback.handler.class = null
+	sasl.jaas.config = null
+	sasl.kerberos.kinit.cmd = /usr/bin/kinit
+	sasl.kerberos.min.time.before.relogin = 60000
+	sasl.kerberos.service.name = null
+	sasl.kerberos.ticket.renew.jitter = 0.05
+	sasl.kerberos.ticket.renew.window.factor = 0.8
+	sasl.login.callback.handler.class = null
+	sasl.login.class = null
+	sasl.login.connect.timeout.ms = null
+	sasl.login.read.timeout.ms = null
+	sasl.login.refresh.buffer.seconds = 300
+	sasl.login.refresh.min.period.seconds = 60
+	sasl.login.refresh.window.factor = 0.8
+	sasl.login.refresh.window.jitter = 0.05
+	sasl.login.retry.backoff.max.ms = 10000
+	sasl.login.retry.backoff.ms = 100
+	sasl.mechanism = GSSAPI
+	sasl.oauthbearer.clock.skew.seconds = 30
+	sasl.oauthbearer.expected.audience = null
+	sasl.oauthbearer.expected.issuer = null
+	sasl.oauthbearer.jwks.endpoint.refresh.ms = 3600000
+	sasl.oauthbearer.jwks.endpoint.retry.backoff.max.ms = 10000
+	sasl.oauthbearer.jwks.endpoint.retry.backoff.ms = 100
+	sasl.oauthbearer.jwks.endpoint.url = null
+	sasl.oauthbearer.scope.claim.name = scope
+	sasl.oauthbearer.sub.claim.name = sub
+	sasl.oauthbearer.token.endpoint.url = null
+	security.protocol = PLAINTEXT
+	security.providers = null
+	send.buffer.bytes = 131072
+	socket.connection.setup.timeout.max.ms = 30000
+	socket.connection.setup.timeout.ms = 10000
+	ssl.cipher.suites = null
+	ssl.enabled.protocols = [TLSv1.2, TLSv1.3]
+	ssl.endpoint.identification.algorithm = https
+	ssl.engine.factory.class = null
+	ssl.key.password = null
+	ssl.keymanager.algorithm = SunX509
+	ssl.keystore.certificate.chain = null
+	ssl.keystore.key = null
+	ssl.keystore.location = null
+	ssl.keystore.password = null
+	ssl.keystore.type = JKS
+	ssl.protocol = TLSv1.3
+	ssl.provider = null
+	ssl.secure.random.implementation = null
+	ssl.trustmanager.algorithm = PKIX
+	ssl.truststore.certificates = null
+	ssl.truststore.location = null
+	ssl.truststore.password = null
+	ssl.truststore.type = JKS
+
+16:11:34.725 [main] INFO org.apache.kafka.common.utils.AppInfoParser -- Kafka version: 3.7.1
+16:11:34.725 [main] INFO org.apache.kafka.common.utils.AppInfoParser -- Kafka commitId: e2494e6ffb89f828
+16:11:34.725 [main] INFO org.apache.kafka.common.utils.AppInfoParser -- Kafka startTimeMs: 1776813094724
+t=  0s  lag=0
+t=  1s  lag=0
+t=  2s  lag=0
+t=  3s  lag=0
+t=  4s  lag=0
+t=  5s  lag=299
+t=  6s  lag=1124
+t=  7s  lag=1512
+t=  8s  lag=1870
+t=  9s  lag=2219
+t= 10s  lag=2549
+t= 11s  lag=2887
+t= 12s  lag=3142
+t= 13s  lag=3346
+t= 14s  lag=3562
+t= 15s  lag=3754
+t= 16s  lag=3969
+t= 17s  lag=4170
+t= 18s  lag=4361
+t= 19s  lag=4542
+t= 20s  lag=4837
+t= 21s  lag=5069
+t= 22s  lag=5283
+t= 23s  lag=5436
+t= 24s  lag=5695
+t= 25s  lag=5929
+t= 26s  lag=6166
+t= 27s  lag=6372
+t= 28s  lag=6638
+t= 29s  lag=6859
+t= 30s  lag=7136
+t= 31s  lag=7375
+t= 32s  lag=7628
+t= 33s  lag=7860
+t= 34s  lag=8109
+t= 35s  lag=8325
+t= 36s  lag=8588
+t= 37s  lag=8822
+t= 38s  lag=9087
+t= 39s  lag=9368
+t= 40s  lag=9656
+t= 41s  lag=9919
+t= 42s  lag=10136
+t= 43s  lag=10368
+t= 44s  lag=10651
+t= 45s  lag=10885
+t= 46s  lag=11128
+t= 47s  lag=11361
+t= 48s  lag=11695
+t= 49s  lag=11960
+t= 50s  lag=12239
+t= 51s  lag=12473
+t= 52s  lag=12758
+t= 53s  lag=13089
+t= 54s  lag=13398
+t= 55s  lag=13699
+t= 56s  lag=13966
+t= 57s  lag=14218
+t= 58s  lag=14516
+t= 59s  lag=14805
+t= 60s  lag=15140
+t= 61s  lag=15531
+t= 62s  lag=15825
+t= 63s  lag=16114
+t= 64s  lag=16397
+t= 65s  lag=15940
+t= 66s  lag=14700
+t= 67s  lag=13640
+t= 68s  lag=12500
+t= 69s  lag=11300
+t= 70s  lag=10090
+t= 71s  lag=8860
+t= 72s  lag=7980
+t= 73s  lag=7040
+t= 74s  lag=6120
+t= 75s  lag=5190
+t= 76s  lag=4260
+t= 77s  lag=3330
+t= 78s  lag=2390
+t= 79s  lag=1440
+t= 80s  lag=540
+t= 81s  lag=0
+t= 82s  lag=0
+t= 83s  lag=0
+
+Drain complete.
+  Peak lag:         16397
+  Time-to-drain:    2030 ms
+16:12:58.320 [kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.utils.AppInfoParser -- App info kafka.admin.client for adminclient-1 unregistered
+16:12:58.331 [kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics -- Metrics scheduler closed
+16:12:58.331 [kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics -- Closing reporter org.apache.kafka.common.metrics.JmxReporter
+16:12:58.331 [kafka-admin-client-thread | adminclient-1] INFO org.apache.kafka.common.metrics.Metrics -- Metrics reporters closed

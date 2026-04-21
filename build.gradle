@@ -26,6 +26,7 @@ repositories {
 }
 
 dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-hateoas'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -109,4 +110,31 @@ tasks.register('loadTest', JavaExec) {
 		println "Make sure the application is running on http://localhost:8081"
 		println ""
 	}
+}
+
+// Kafka-direct load test (publishes to notification.send at a target rate).
+// Pair with the kafkaLoadProbe task to observe consumer lag.
+tasks.register('kafkaLoadTest', JavaExec) {
+	description = 'Run Kafka-direct load test at a target msg/sec rate'
+	group = 'verification'
+
+	dependsOn testClasses
+
+	classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+	mainClass = 'com.notification.notification.load.KafkaLoadTestRunner'
+
+	// Pass TARGET_RATE, DURATION_SECONDS etc. through the environment.
+	environment System.getenv()
+}
+
+tasks.register('kafkaLoadProbe', JavaExec) {
+	description = 'Poll consumer-group lag on notification.send every second'
+	group = 'verification'
+
+	dependsOn testClasses
+
+	classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+	mainClass = 'com.notification.notification.load.KafkaLoadProbe'
+
+	environment System.getenv()
 }

@@ -67,8 +67,7 @@ The **Notification Service** is a production-ready, multi-tenant, event-driven m
 ### Prerequisites
 
 - Java 21+
-- Docker & Docker Compose
-- PostgreSQL (running on port 5433)
+- Docker & Docker Compose (brings up Kafka + Postgres)
 - Gradle 8.5+
 
 ### 1. Clone & Setup
@@ -110,6 +109,7 @@ Expected output:
 ```
 notification-kafka       Up      0.0.0.0:9092->9092/tcp
 notification-kafka-ui    Up      0.0.0.0:9081->8080/tcp
+notification-postgres    Up      0.0.0.0:5433->5432/tcp
 notification-redis-1     Up      6379/tcp
 ```
 
@@ -235,7 +235,7 @@ After evaluating RabbitMQ vs Kafka, **Kafka was chosen** for:
 |---------|---------|
 | **Event Sourcing** | Full audit trail via immutable event log |
 | **Event Replay** | Reprocess notifications from any point in time |
-| **Scalability** | Horizontal scaling via partitions (10K-100K msgs/sec) |
+| **Scalability** | Horizontal scaling via partitions — measured **1500+ msg/sec** sustained end-to-end on a dev laptop (see [`load-test-results/1500-msg-sec.md`](load-test-results/1500-msg-sec.md)); Kafka's own ceiling of 10K–100K msgs/sec is reachable by adding partitions and consumer replicas |
 | **Real-time Analytics** | Kafka Streams for delivery metrics |
 | **Long-term Retention** | 30-day retention for `notification.events` |
 | **Multi-tenancy** | Partition by organizationId for isolation |
@@ -636,36 +636,65 @@ PGPASSWORD=12345 psql -h localhost -p 5433 -U notification -d notification \
 
 ### Load Testing
 
-Send multiple notifications concurrently:
+Two complementary benchmarks live in `src/test/java/com/notification/notification/load/`:
+
+| Benchmark | What it measures | Entry point |
+|-----------|------------------|-------------|
+| **HTTP ingress** | API `req/s`, end-to-end HTTP latency | `LoadTestRunner.java` (`./gradlew loadTest`) |
+| **Kafka pipeline** | Sustained **msg/sec** through `notification.send` → consumer → DB, with producer-ack latency and consumer lag over time | `KafkaLoadTestRunner.java` + `KafkaLoadProbe.java` (`./scripts/run-kafka-load-test.sh`) |
+
+#### 1500+ msg/sec Kafka benchmark
+
+Pre-inserts notification rows via JDBC, then publishes to `notification.send` at a controlled rate while a separate probe polls consumer-group lag every second. SMTP is swapped for a `NoOpSender` via Spring profile `loadtest` so the benchmark measures the Kafka + DB + consumer pipeline, not the mail provider.
+
+**Run it:**
+```bash
+# 1. Infrastructure up
+docker compose up -d
+
+# 2. App up with the loadtest profile (NoOpSender replaces SMTP)
+SPRING_PROFILES_ACTIVE=loadtest ./gradlew bootRun
+
+# 3. In another terminal — default is 1500 msg/sec for 60 s
+./scripts/run-kafka-load-test.sh
+
+# Override:
+./scripts/run-kafka-load-test.sh 2000 30   # 2000 msg/sec for 30 s
+```
+
+**What gets tuned:**
+- Topic `notification.send` — **6 partitions**, partition key = `organizationId`
+- Producer — `acks=all`, `enable.idempotence=true`, `batch.size=32768`, `linger.ms=10`, `compression=gzip`
+- Consumer — `notification-sender-group`, `max-poll-records=10`, manual ack, concurrency **3** (raise to `6` via `spring.kafka.listener.concurrency=6` to match partition count)
+
+**Pass criteria:**
+- Producer sustains ≥ 1500 msg/sec averaged over the run
+- Zero producer failures
+- Consumer lag returns to 0 within 30 s of producer stopping
+- No DLQ messages; `SELECT COUNT(*) WHERE status='SENT'` matches sent count
+
+**Measured result:** see [`load-test-results/1500-msg-sec.md`](load-test-results/1500-msg-sec.md) for the filled-in run log (rate, ack latency percentiles, peak lag, drain time).
+
+#### Simple curl smoke test
+
+For a quick sanity check that the pipeline is wired up correctly (no rate measurement, just "did 100 requests flow through"):
 
 ```bash
 for i in {1..100}; do
-  curl -X POST http://localhost:8081/api/v1/notifications \
+  curl -sX POST http://localhost:8081/api/v1/notifications \
     -H "Content-Type: application/json" \
-    -d "{
-      \"organizationId\": \"org-$((i % 10))\",
-      \"title\": \"Test $i\",
-      \"message\": \"Load test message $i\",
-      \"recipient\": \"user$i\",
-      \"recipientEmail\": \"test$i@example.com\",
-      \"type\": \"EMAIL\"
-    }" &
+    -d "{\"organizationId\":\"org-$((i % 10))\",\"title\":\"Test $i\",\"message\":\"Smoke test $i\",\"recipient\":\"user$i\",\"recipientEmail\":\"test$i@example.com\",\"type\":\"EMAIL\"}" &
 done
 wait
-
-echo "Sent 100 notifications"
 ```
 
 ### Monitor Processing
 
 ```bash
-# Watch Kafka UI for real-time metrics
+# Kafka UI — topics, partitions, consumer lag
 open http://localhost:9081
 
-# Watch consumer lag
-watch -n 1 'curl -s http://localhost:9081/api/clusters/notification-cluster/consumer-groups'
-
-# Check database status distribution
+# Database status distribution
 PGPASSWORD=12345 psql -h localhost -p 5433 -U notification -d notification \
   -c "SELECT status, COUNT(*) FROM notifications GROUP BY status;"
 ```
@@ -1051,7 +1080,7 @@ This design provides a **scalable, auditable, and production-ready** notificatio
 **Why Apache Kafka?**
 * **Event Sourcing**: Full audit trail via immutable event log (`notification.events` topic)
 * **Event Replay**: Reprocess notifications from any point in time (up to 30-day retention)
-* **Horizontal Scalability**: Partition-based parallelism enables 10K-100K msgs/sec throughput
+* **Horizontal Scalability**: Partition-based parallelism — **1500+ msg/sec measured** (see [`load-test-results/1500-msg-sec.md`](load-test-results/1500-msg-sec.md)), with Kafka's own ceiling of 10K–100K msgs/sec reachable by scaling partitions and consumer replicas
 * **Multi-Tenancy**: Partition by `organizationId` for ordering and isolation
 * **Real-time Analytics**: Kafka Streams for delivery metrics and monitoring
 * **Long-term Retention**: 30-day retention for audit and compliance

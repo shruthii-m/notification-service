@@ -1,0 +1,44 @@
+================================================================================
+Kafka Direct Load Test
+================================================================================
+  Target rate:     1500 msg/sec
+  Duration:        60s
+  Total messages:  90000
+  Topic:           notification.send
+  Kafka:           localhost:9092
+  Postgres:        jdbc:postgresql://localhost:5433/notification
+================================================================================
+Pre-inserting 90000 notification rows...
+Exception in thread "main" java.sql.BatchUpdateException: Batch entry 0 INSERT INTO notifications (uuid, organization_id, title, message, recipient, recipient_email,  type, status, retry_count, max_retries, created_at) VALUES (('c8a61af0-8f3d-425d-9e23-ed40ffe21275'::uuid), ('org-0'), ('Kafka load test 0'), ('benchmark payload 0'), ('user-0'), ('user-0@loadtest.local'), ('EMAIL'), ('PENDING'), 0, 5, ('2026-04-21 16:01:49.347922-07'::timestamp)) was aborted: ERROR: null value in column "id" of relation "notifications" violates not-null constraint
+  Detail: Failing row contains (null, 2026-04-21 16:01:49.347922, null, null, 5, benchmark payload 0, org-0, null, null, null, user-0, user-0@loadtest.local, 0, null, PENDING, Kafka load test 0, EMAIL, c8a61af0-8f3d-425d-9e23-ed40ffe21275).  Call getNextException to see other errors in the batch.
+	at org.postgresql.jdbc.BatchResultHandler.handleError(BatchResultHandler.java:165)
+	at org.postgresql.core.ResultHandlerDelegate.handleError(ResultHandlerDelegate.java:52)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2421)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2153)
+	at org.postgresql.core.v3.QueryExecutorImpl.flushIfDeadlockRisk(QueryExecutorImpl.java:1503)
+	at org.postgresql.core.v3.QueryExecutorImpl.sendQuery(QueryExecutorImpl.java:1528)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:566)
+	at org.postgresql.jdbc.PgStatement.internalExecuteBatch(PgStatement.java:888)
+	at org.postgresql.jdbc.PgStatement.executeBatch(PgStatement.java:912)
+	at org.postgresql.jdbc.PgPreparedStatement.executeBatch(PgPreparedStatement.java:1739)
+	at com.notification.notification.load.KafkaLoadTestRunner.insertRows(KafkaLoadTestRunner.java:118)
+	at com.notification.notification.load.KafkaLoadTestRunner.main(KafkaLoadTestRunner.java:72)
+Caused by: org.postgresql.util.PSQLException: ERROR: null value in column "id" of relation "notifications" violates not-null constraint
+  Detail: Failing row contains (null, 2026-04-21 16:01:49.347922, null, null, 5, benchmark payload 0, org-0, null, null, null, user-0, user-0@loadtest.local, 0, null, PENDING, Kafka load test 0, EMAIL, c8a61af0-8f3d-425d-9e23-ed40ffe21275).
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2733)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2420)
+	... 9 more
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':kafkaLoadTest'.
+> Process 'command '/opt/homebrew/Cellar/openjdk@21/21.0.10/libexec/openjdk.jdk/Contents/Home/bin/java'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 4s

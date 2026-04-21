@@ -24,6 +24,15 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
+    @Value("${spring.kafka.producer.batch-size:32768}")
+    private int producerBatchSize;
+
+    @Value("${spring.kafka.producer.properties.linger.ms:10}")
+    private int producerLingerMs;
+
+    @Value("${spring.kafka.listener.concurrency:3}")
+    private int listenerConcurrency;
+
     // Producer Configuration for NotificationMessage
     @Bean
     public ProducerFactory<String, NotificationMessage> notificationMessageProducerFactory() {
@@ -36,6 +45,8 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
         configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
         configProps.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip");
+        configProps.put(ProducerConfig.BATCH_SIZE_CONFIG, producerBatchSize);
+        configProps.put(ProducerConfig.LINGER_MS_CONFIG, producerLingerMs);
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
@@ -56,6 +67,8 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
         configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
         configProps.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip");
+        configProps.put(ProducerConfig.BATCH_SIZE_CONFIG, producerBatchSize);
+        configProps.put(ProducerConfig.LINGER_MS_CONFIG, producerLingerMs);
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
@@ -90,7 +103,7 @@ public class KafkaConfig {
             new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(notificationMessageConsumerFactory());
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
-        factory.setConcurrency(3);
+        factory.setConcurrency(listenerConcurrency);
         return factory;
     }
 }
